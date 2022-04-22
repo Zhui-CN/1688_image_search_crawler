@@ -91,7 +91,7 @@ class ImgSearch:
             ("imageAddress", ""),
             ("imageId", self._img_id),
             ("imageIdList", self._img_id),
-            ("pailitaoCategoryId", "0"),
+            # ("pailitaoCategoryId", "0"),
             ("beginPage", page),
             ("pageSize", "40"),
             ("requestId", self._req_id),
