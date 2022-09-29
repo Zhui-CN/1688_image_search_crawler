@@ -8,17 +8,12 @@
 
 ```python
 # pip install requests
-
 # ImgSearch 是具体实现
-from search.search import ImgSearch
-
-# img 可以是图片路径或者网络url
-# kuangjing 是否启用跨境搜索
-# max_page 搜索最大页数
-# search_gen是generator
-img_search = ImgSearch()
-for product in img_search.search_gen(img, kuajing=False, max_page=1):
-    print(product)
+# img 可以是图片路径或者网络url或者是图片编码的base64字符串
+# kj 是否启用跨境搜索
+# max_size 搜索最大个数, 不设置默认一页
+# max_page 搜索最大页数, 不设置默认一页
+# 使用参考main.py
 ```
 
 **研究不易, 给个star再走呗~**
