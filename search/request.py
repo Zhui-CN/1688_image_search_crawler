@@ -44,10 +44,10 @@ class Request:
     def __init__(self):
         self._session = requests.Session()
         self._session.headers.update(self._headers)
-        self._session.mount('http://', DESAdapter())
-        self._session.mount('https://', DESAdapter())
 
     def request(self, method, url, headers=None, params=None, data=None, json=None):
+        self._session.mount('http://', DESAdapter())
+        self._session.mount('https://', DESAdapter())
         try:
             if method == "GET":
                 resp = self._session.get(url, headers=headers, params=params)
