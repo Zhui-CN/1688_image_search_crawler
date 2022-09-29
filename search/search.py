@@ -3,19 +3,53 @@
 import os
 import time
 import json
+import base64
 from hashlib import md5
-from base64 import b64encode
+from .log import logger
+from .request import Request
 from urllib.parse import urlencode
-from search.utils.request import Request
+
+
+def is_b64_str(s):
+    try:
+        return base64.b64encode(base64.b64decode(s)).decode() == s
+    except Exception:
+        return False
 
 
 class ImgSearch:
 
-    def __init__(self):
+    def __init__(self, img, kj=False, max_size=None, max_page=None):
         self._req = Request()
         self._img_id = None
         self._req_id = None
         self._session_id = None
+        self.offset = 0
+        self.page = 1
+        self.b64img = self.get_b64img_str(img)
+        self.kj = kj
+        self.max_size = max_size
+        self.max_page = max_page or 1 if not self.max_size else None
+        self.upload_data = {
+            "data": {
+                "imageBase64": self.b64img,
+                "appName": "searchImageUpload",
+                "appKey": "pvvljh1grxcmaay2vgpe9nb68gg9ueg2"
+            }
+        }
+        self.upload_success = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.max_size and self.offset >= self.max_size or self.max_page and self.page > self.max_page:
+            raise StopIteration
+        if not self.upload_success:
+            self.upload_img()
+        item_ls = self.request_item_ls()
+        self.page += 1
+        return item_ls
 
     def _other_page(self, kuajing):
         # TODO other_page
@@ -30,12 +64,24 @@ class ImgSearch:
         else:
             api = "https://s.1688.com/youyuan/index.htm"
         api = f"{api}?{urlencode(params)}"
-        resp = self._req.request("GET", api)
 
-    def _get_upload_params(self, data, token=""):
-        timestamp = str(round(time.time() * 1000))
+    def get_b64img_str(self, img: str) -> str:
+        if os.path.exists(img):
+            with open(img, "rb") as f:
+                b64img = base64.b64encode(f.read()).decode()
+        elif img.startswith("http"):
+            resp = self._req.request("GET", img)
+            b64img = base64.b64encode(resp.content).decode()
+        elif is_b64_str(img):
+            b64img = img
+        else:
+            raise ValueError("img有误")
+        return b64img
+
+    def upload_params(self, token=""):
         app_key = "12574478"
-        s = json.dumps(data["data"], separators=(',', ':'))
+        timestamp = str(round(time.time() * 1000))
+        s = json.dumps(self.upload_data["data"], separators=(',', ':'))
         t = token + "&" + timestamp + "&" + app_key + "&" + s
         sign = md5(t.encode()).hexdigest()
         return {
@@ -51,48 +97,30 @@ class ImgSearch:
             "_bx-v": "1.1.20"
         }
 
-    def _upload_img(self, img):
-        b64img = None
-        if os.path.exists(img):
-            with open(img, "rb") as f:
-                b64img = b64encode(f.read()).decode()
-        elif isinstance(img, str) and img.startswith("http"):
-            resp = self._req.request("GET", img)
-            if resp.status_code == 200:
-                b64img = b64encode(resp.content).decode()
-        if not b64img:
-            print("img有误")
-            return False
+    def upload_img(self):
         api = "https://h5api.m.1688.com/h5/mtop.1688.imageservice.putimage/1.0/"
-        data = {
-            "data": {
-                "imageBase64": b64img,
-                "appName": "searchImageUpload",
-                "appKey": "pvvljh1grxcmaay2vgpe9nb68gg9ueg2"
-            }
-        }
-        post_data = urlencode(data).replace("%27", "%22").replace("+", "")
-        self._req.request("POST", api, data=post_data, params=self._get_upload_params(data=data))
+        post_data = urlencode(self.upload_data).replace("%27", "%22").replace("+", "")
+        self._req.request("POST", api, data=post_data, params=self.upload_params())
         token = self._req.cookies.get("_m_h5_tk").split("_")[0]
-        resp_json = self._req.request("POST", api, data=post_data,
-                                      params=self._get_upload_params(data=data, token=token)).json()
+        resp = self._req.request("POST", api, data=post_data, params=self.upload_params(token=token))
+        resp_json = resp.json()
         if not resp_json.get("data"):
-            print("上传图片失败")
-            return False
+            logger.error("上传图片失败")
+            return
         self._img_id = resp_json["data"]["imageId"]
         self._req_id = resp_json["data"]["requestId"]
         self._session_id = resp_json["data"]["sessionId"]
-        return True
+        self.upload_success = True
 
-    def _get_product_api_info(self, page, kuajing):
-        page_name = "CrossBorderPCFindImage" if kuajing else "image"
+    def request_item_ls(self):
+        page_name = "CrossBorderPCFindImage" if self.kj else "image"
         params = dict(filter(lambda x: x[1] is not None, [
             ("tab", "imageSearch"),
             ("imageAddress", ""),
             ("imageId", self._img_id),
             ("imageIdList", self._img_id),
             # ("pailitaoCategoryId", "0"),
-            ("beginPage", page),
+            ("beginPage", self.page),
             ("pageSize", "40"),
             ("requestId", self._req_id),
             ("pageName", page_name),
@@ -100,19 +128,26 @@ class ImgSearch:
             ("_bx", "1.1.20"),
         ]))
         api = f"https://search.1688.com/service/imageSearchOfferResultViewService?{urlencode(params)}"
-        resp_json = self._req.request("GET", api).json()
-        return resp_json["data"]
-
-    def search_gen(self, img, kuajing=False, max_page=1):
-        """
-        :param img: str 图片地址或者图片url
-        :param kuajing: bool 是否搜索跨境
-        :param max_page: int 最大页数
-        """
-        if self._upload_img(img):
-            for page in range(1, max_page + 1):
-                print(f"第{page}页")
-                resp_json = self._get_product_api_info(page, kuajing)
-                offer_list = resp_json["data"]["offerList"]
-                for offer in offer_list:
-                    yield offer
+        logger.info(f"imgid:{self._img_id}, page:{self.page}")
+        resp = self._req.request("GET", api)
+        data_json = resp.json()["data"]["data"]
+        offer_list = data_json.get("offerList") or []
+        item_ls = []
+        for item in offer_list:
+            self.offset += 1
+            information = item.get("information") or {}
+            company = item.get("company") or {}
+            trade_quantity = item.get("tradeQuantity") or {}
+            item_ls.append({
+                "category_id": information.get("categoryId"),
+                "subject": information.get("subject"),
+                "city": company.get("city"),
+                "province": company.get("province"),
+                "img_url": (item.get("image") or {}).get("imgUrl"),
+                "offer_id": item.get("id"),
+                "price": float((((item.get("tradePrice") or {}).get("offerPrice") or {}).get("priceInfo") or {}).get(
+                    "price") or 0),
+                "quantity_begin": trade_quantity.get("quantityBegin"),
+                "unit": trade_quantity.get("unit")
+            })
+        return item_ls
