@@ -181,8 +181,9 @@ class ImgSearch:
         token = self.req.cookies.get("_m_h5_tk").split("_")[0]
         resp = self.req.request("POST", api, headers=headers, data=post_data, params=self.get_params(token=token))
         resp_json = resp.json()
-        if not resp_json.get("data"):
-            logger.error("上传图片失败")
+        if not (resp_json.get("data") or {}).get("imageId"):
+            logger.error(resp_json)
+            logger.error(f"上传图片失败:{self}")
             return
         self.img_id = resp_json["data"]["imageId"]
         self.req_id = resp_json["data"]["requestId"]
@@ -205,13 +206,13 @@ class ImgSearch:
             ("_bx", "1.1.20"),
         ]))
         api = f"https://search.1688.com/service/imageSearchOfferResultViewService?{urlencode(params)}"
-        logger.info(f"正在爬取:{self} ImgId:{self.img_id} page:{self.page}")
+        logger.info(f"正在爬取:ImgId:{self.img_id} page:{self.page} {self}")
         json_data = self.req.request("GET", api).json()
         offer_list = []
         if ((json_data.get("data") or {}).get("data") or {}).get("offerList"):
             offer_list = json_data["data"]["data"]["offerList"]
         if not offer_list:
-            logger.warning(f"无结果集:{self} ImgId:{self.img_id} page:{self.page}")
+            logger.warning(f"无结果集:ImgId:{self.img_id} page:{self.page} {self}")
         return offer_list
 
     def request_web_offer_list(self):
@@ -223,7 +224,7 @@ class ImgSearch:
         ]))
         api = "https://s.1688.com/kuajing/image_search.htm" if self.kj else "https://s.1688.com/youyuan/index.htm"
         url = f"{api}?{urlencode(params)}"
-        logger.info(f"正在爬取:{self} ImgId:{self.img_id}")
+        logger.info(f"正在爬取:ImgId:{self.img_id} {self}")
         body = self.req.request("GET", url).text
         data_reg = self.data_reg.search(body)
         offer_list = []
@@ -232,8 +233,13 @@ class ImgSearch:
             if (json_data.get("data") or {}).get("offerList"):
                 offer_list = json_data["data"]["offerList"]
         if not offer_list:
-            logger.warning(f"无结果集:{self} ImgId:{self.img_id}")
+            logger.warning(f"无结果集:ImgId:{self.img_id} {self}")
         return offer_list
+
+    def parse_scores_num(self, score):
+        tmp = round(float(score or 0), 1)
+        tmp = tmp if tmp >= 0 else 0
+        return tmp
 
     def parse_offer_list(self, offer_list):
         item_ls = []
@@ -255,7 +261,13 @@ class ImgSearch:
             item["companyName"] = company.get("name")
             item["shopUrl"] = company.get("url")
 
-            item["oldPrice"] = float((offer_price.get("priceInfo") or {}).get("price") or 0)  # 面板价格
+            price_info = offer_price.get("value")
+            if not price_info:
+                price_info = offer_price.get("originalValue") or {}
+            integer = price_info.get("integer") or 0
+            decimals = price_info.get("decimals") or 0
+            item["oldPrice"] = float(f"{integer}.{decimals}")  # 面板价格
+
             item["quantityBegin"] = trade_quantity.get("quantityBegin")  # 起订量
             item["unit"] = trade_quantity.get("unit")  # 起订量单位
             item["gmvPrice"] = (trade_quantity.get("gmvValue") or {}).get("integer")  # 成交价
@@ -266,18 +278,22 @@ class ImgSearch:
                 purchase_rate = f"{purchase_rate}%" if purchase_rate else ""
             item["rePurchaseRate"] = purchase_rate  # 复购率  rePurchaseRate
 
-            item["quantityPrices"] = [
-                {"quantity": q.get("quantity"), "price": float(q.get("valueString") or 0)}
-                for q in offer_price.get("quantityPrices") or []
-            ]  # 批发数量价格
+            # 批发数量价格
+            quantity_prices = []
+            for q in offer_price.get("quantityPrices") or []:
+                price_info = q.get("value") or {}
+                integer = price_info.get("integer") or 0
+                decimals = price_info.get("decimals") or 0
+                quantity_prices.append({"quantity": q.get("quantity"), "price": float(f"{integer}.{decimals}")})
+            item["quantityPrices"] = quantity_prices
 
             item["scores"] = {
-                "compositeNewScore": round(float(trade_service.get("compositeNewScore") or 0), 1),  # 综合服务
-                "consultationScore": round(float(trade_service.get("consultationScore") or 0), 1),  # 采购咨询
-                "goodsScore": round(float(trade_service.get("goodsScore") or 0), 1),  # 品质体验
-                "logisticsScore": round(float(trade_service.get("logisticsScore") or 0), 1),  # 物流时效
-                "returnScore": round(float(trade_service.get("returnScore") or 0), 1),  # 退货体验
-                "disputeScore": round(float(trade_service.get("disputeScore") or 0), 1),  # 纠纷解决
+                "compositeNewScore": self.parse_scores_num(trade_service.get("compositeNewScore")),  # 综合服务
+                "consultationScore": self.parse_scores_num(trade_service.get("consultationScore")),  # 采购咨询
+                "goodsScore": self.parse_scores_num(trade_service.get("goodsScore")),  # 品质体验
+                "logisticsScore": self.parse_scores_num(trade_service.get("logisticsScore")),  # 物流时效
+                "returnScore": self.parse_scores_num(trade_service.get("returnScore")),  # 退货体验
+                "disputeScore": self.parse_scores_num(trade_service.get("disputeScore"))  # 纠纷解决
             }
             item["shopTag"] = self.get_shop_tag_info(offer)
             item["shopTag"]["year"] = trade_service.get("tpYear")
