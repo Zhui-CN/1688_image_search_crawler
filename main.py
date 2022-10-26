@@ -1,7 +1,7 @@
 # coding=utf-8
 
-
-from search import ImgSearch, logger, RequestError
+from crawler import ImgSearch
+from utils import logger, RequestError
 
 
 def main(data):
@@ -17,7 +17,7 @@ def main(data):
     while status:
         try:
             for page_ls in page:
-                item_ls += page_ls
+                item_ls.extend(page_ls)
             break
         except RequestError:
             continue
@@ -26,13 +26,15 @@ def main(data):
             status = False
             logger.error("page process error: {}".format(page), exc_info=exc)
             break
+    logger.info(f"{page} status:{status} msg:{message} items:{len(item_ls)}")
     return {"status": status, "message": message, "data": item_ls}
 
 
 def file():
     data = {
         "img": "img.jpg",
-        "kj": True,
+        "kj": False,
+        "api": False,
     }
     print(main(data))
 
@@ -41,7 +43,8 @@ def url():
     img_url = "https://gimg2.baidu.com/image_search/src=http%3A%2F%2Fimg.alicdn.com%2Fi3%2F725677994%2FO1CN01JpzjZn28vIqeoy4tm_%21%21725677994.jpg_200x200.jpg&refer=http%3A%2F%2Fimg.alicdn.com&app=2002&size=f9999,10000&q=a80&n=0&g=0n&fmt=jpeg?sec=1648118281&t=ea26e293b501cfa32bf8976f19252ef9"
     data = {
         "img": img_url,
-        "kj": False,
+        "kj": True,
+        "api": True,
         "max_page": 2
     }
     print(main(data))
@@ -52,7 +55,8 @@ def b64str():
     data = {
         "img": b64img,
         "kj": False,
-        "max_size": 100
+        "api": True,
+        "max_size": 80
     }
     print(main(data))
 

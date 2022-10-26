@@ -11,16 +11,14 @@ ciphers_str = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-ECD
 ciphers_ls = ciphers_str.split(':')
 ciphers = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:"
 
-
-def get_ciphers():
-    random.shuffle(ciphers_ls)
-    return ciphers + ':'.join(ciphers_ls[:random.randint(12, 17)])
+ua_ls = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36"]
 
 
 class DESAdapter(HTTPAdapter):
 
     def __init__(self, *args, **kwargs):
-        self.ciphers = get_ciphers()
+        random.shuffle(ciphers_ls)
+        self.ciphers = ciphers + ':'.join(ciphers_ls[:random.randint(12, 17)])
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(self, *args, **kwargs):
@@ -35,33 +33,45 @@ class DESAdapter(HTTPAdapter):
 
 
 class Request:
-    _headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36",
-        "Referer": "https://s.1688.com/",
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
 
-    def __init__(self):
+    def __init__(self, random_ua=False):
+        proxy = ''
+        self.default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36"
+        self._proxy = {"http": proxy, "https": proxy}
         self._session = requests.Session()
-        self._session.headers.update(self._headers)
+        self.random_ua = random_ua
+        self.ua = ""
 
-    def request(self, method, url, headers=None, params=None, data=None, json=None):
-        self._session.mount('http://', DESAdapter())
+    @property
+    def cookies(self):
+        return self._session.cookies
+
+    def close(self):
+        self._session.close()
+
+    def get_default_headers(self):
+        if not self.ua:
+            self.ua = random.choice(ua_ls) if self.random_ua else self.default_ua
+        return {
+            "User-Agent": self.ua,
+            "Referer": "https://s.1688.com/",
+        }
+
+    def request(self, method, url, headers=None, params=None, data=None, json_data=None, without_proxy=True):
         self._session.mount('https://', DESAdapter())
+        _headers = self.get_default_headers()
+        _headers.update(headers or {})
+        self._session.headers = _headers
         try:
-            if method == "GET":
-                resp = self._session.get(url, headers=headers, params=params)
-            else:
-                resp = self._session.post(url, headers=headers, params=params, data=data, json=json)
-            if resp.status_code // 100 not in [2, 3]:
-                raise StatusError(resp.status_code, url)
+            resp = self._session.request(method, url, params=params, allow_redirects=True,
+                                         data=data, json=json_data, timeout=60,
+                                         proxies=self._proxy if not without_proxy else None)
+            status_code = resp.status_code
+            if status_code // 100 not in [2, 3]:
+                raise StatusError(status_code, url)
             return resp
         except StatusError:
             raise
         except Exception as exc:
             logger.error("Request Error", exc_info=exc)
             raise RequestError(url)
-
-    @property
-    def cookies(self):
-        return self._session.cookies

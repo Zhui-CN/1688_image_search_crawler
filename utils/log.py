@@ -2,7 +2,7 @@
 
 import logging
 
-logger = logging.getLogger('SearchImg')
+logger = logging.getLogger('ImgSearch')
 fmt = logging.Formatter('%(asctime)s,%(process)d,%(name)s,%(levelname)s,%(filename)s:%(lineno)d,%(message)s')
 sh = logging.StreamHandler()
 sh.setFormatter(fmt)
