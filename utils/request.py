@@ -11,7 +11,23 @@ ciphers_str = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-ECD
 ciphers_ls = ciphers_str.split(':')
 ciphers = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:"
 
-ua_ls = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36"]
+ua_ls = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36"]
+
+session = requests.Session()
+proxy_url = ""
+
+
+def get_proxy():
+    return None
+    retry = 3
+    while retry:
+        try:
+            resp = session.request("GET", proxy_url)
+            ip = resp.text
+            return {"http": f"http://{ip}", "https": f"https://{ip}"}
+        except Exception as exc:
+            logger.error(f"获取代理ip失败:{str(exc)}")
 
 
 class DESAdapter(HTTPAdapter):
@@ -35,12 +51,11 @@ class DESAdapter(HTTPAdapter):
 class Request:
 
     def __init__(self, random_ua=False):
-        proxy = ''
         self.default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36"
-        self._proxy = {"http": proxy, "https": proxy}
         self._session = requests.Session()
         self.random_ua = random_ua
         self.ua = ""
+        self.last_proxy = None
 
     @property
     def cookies(self):
@@ -57,15 +72,20 @@ class Request:
             "Referer": "https://s.1688.com/",
         }
 
-    def request(self, method, url, headers=None, params=None, data=None, json_data=None, without_proxy=True):
+    def request(self, method, url, headers=None, params=None, data=None, json_data=None, without_proxy=False, last_proxy=False):
         self._session.mount('https://', DESAdapter())
         _headers = self.get_default_headers()
         _headers.update(headers or {})
         self._session.headers = _headers
+        if last_proxy:
+            p = self.last_proxy
+        else:
+            p = get_proxy() if not without_proxy else None
+        self.last_proxy = p
         try:
             resp = self._session.request(method, url, params=params, allow_redirects=True,
                                          data=data, json=json_data, timeout=60,
-                                         proxies=self._proxy if not without_proxy else None)
+                                         proxies=p, verify=True)
             status_code = resp.status_code
             if status_code // 100 not in [2, 3]:
                 raise StatusError(status_code, url)
