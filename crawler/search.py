@@ -282,6 +282,7 @@ class ImgSearch:
             item["brand"] = (offer.get("brand") or {}).get("name")
             item["image_url"] = (offer.get("image") or {}).get("imgUrl")
             item["offer_id"] = offer.get("id")
+            item["product_url"] = f"https://detail.1688.com/offer/{item['offer_id']}.html"
             item["category_id"] = information.get("categoryId")
             item["subject"] = information.get("subject")
             item["city"] = company.get("city")

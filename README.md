@@ -25,6 +25,7 @@
   "brand": "小羊嘟嘟",
   "image_url": "https://cbu01.alicdn.com/img/ibank/O1CN01cx6aTj1SDbAo0DOIy_!!2200651792213-0-cib.jpg",
   "offer_id": 645493882755,
+  "product_url": "https://detail.1688.com/offer/645493882755.html",
   "category_id": 1037003,
   "subject": "2023春秋新款婴儿连体衣男女宝宝哈衣爬服纯棉安阳婴幼童服装",
   "city": "安阳市",
